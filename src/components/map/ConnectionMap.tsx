@@ -208,7 +208,14 @@ export default function ConnectionMap() {
         html: `<div class="relative flex items-center justify-center group">
                 <div class="absolute w-16 h-16 bg-orange-400 rounded-full animate-ping opacity-20"></div>
                 <div class="relative w-12 h-12 hover:scale-110 transition-transform duration-500 drop-shadow-2xl">
-                   <img src="/home-marker.svg" alt="Home" class="w-full h-full object-contain filter drop-shadow-lg" />
+                   <svg viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg" class="w-full h-full filter drop-shadow-lg">
+                     <style>@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}.heart-anim{animation:float 2s ease-in-out infinite}</style>
+                     <path d="M10 65 L50 35 L90 65" fill="#e76f51" stroke="#e76f51" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+                     <rect x="20" y="65" width="60" height="45" rx="2" fill="#f4a261"/>
+                     <path d="M42 110 L42 85 A 8 8 0 0 1 58 85 L58 110 Z" fill="#2a9d8f"/>
+                     <circle cx="50" cy="58" r="6" fill="#fff" stroke="#264653" stroke-width="2"/>
+                     <path class="heart-anim" d="M50 15 C40 5 25 15 50 30 C75 15 60 5 50 15 Z" fill="#e63946"/>
+                   </svg>
                 </div>
                </div>`,
         iconSize: [50, 50],
