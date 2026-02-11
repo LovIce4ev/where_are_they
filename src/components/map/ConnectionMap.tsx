@@ -230,15 +230,16 @@ export default function ConnectionMap() {
                 <MapContainer
                     center={CHIANG_MAI}
                     zoom={4}
-                    minZoom={2}
-                    maxBounds={WORLD_BOUNDS}
+                    minZoom={3}
+                    maxBounds={[[-60, -180], [85, 180]]} // 限制南极区域，聚焦有人居住区域
+                    maxBoundsViscosity={1.0} // 强力回弹，不允许拖出边界
                     className="w-full h-full"
                     style={{ background: '#fdfaf3' }}
                 >
                     <TileLayer
                         attribution='&copy; OpenStreetMap contributors'
                         url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png"
-                        noWrap={false}
+                        noWrap={true} // 禁止地图水平重复
                     />
 
                     <MapController target={mapTarget} />
