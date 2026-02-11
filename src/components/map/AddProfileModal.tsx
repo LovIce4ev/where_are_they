@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, MapPin, MessageSquare, Calendar, User, Loader2, Search } from 'lucide-react';
 import { createProfile } from '@/lib/supabase';
@@ -29,6 +29,9 @@ export default function AddProfileModal({ isOpen, onClose, onSuccess }: AddProfi
     const [searching, setSearching] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // FIXME: 原实现的 setTimeout 返回值未正确清理，导致内存泄漏
+    const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
     // 使用 Nominatim API 搜索城市
     const searchCity = useCallback(async (query: string) => {
         if (query.length < 2) {
@@ -38,7 +41,6 @@ export default function AddProfileModal({ isOpen, onClose, onSuccess }: AddProfi
 
         setSearching(true);
         try {
-            // 使用本地 API 代理，解决 CORS 和网络问题 (集成 Nominatim + Photon 双源)
             const response = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`);
             if (!response.ok) throw new Error('搜索失败');
             const data = await response.json();
@@ -50,17 +52,19 @@ export default function AddProfileModal({ isOpen, onClose, onSuccess }: AddProfi
         }
     }, []);
 
-    // 延迟搜索
+    // 延迟搜索 — 使用 ref 正确清理上一次定时器
     const handleCityInputChange = (value: string) => {
         setCityQuery(value);
         setSelectedCity(null);
 
-        // 使用简单的 debounce
-        const timeoutId = setTimeout(() => {
-            searchCity(value);
-        }, 300);
+        if (debounceTimerRef.current) {
+            clearTimeout(debounceTimerRef.current);
+        }
 
-        return () => clearTimeout(timeoutId);
+        debounceTimerRef.current = setTimeout(() => {
+            searchCity(value);
+            debounceTimerRef.current = null;
+        }, 300);
     };
 
     const handleCitySelect = (city: CityResult) => {
@@ -120,7 +124,7 @@ export default function AddProfileModal({ isOpen, onClose, onSuccess }: AddProfi
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+                    className="fixed inset-0 z-[2000] flex items-center justify-center modal-backdrop"
                     onClick={onClose}
                 >
                     <motion.div

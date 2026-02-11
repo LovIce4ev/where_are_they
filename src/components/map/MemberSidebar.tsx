@@ -47,7 +47,7 @@ export default function MemberSidebar({ isOpen, onClose, members, onSelectMember
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={onClose}
-                        className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[1500] md:hidden"
+                        className="fixed inset-0 sidebar-backdrop z-[1500] md:hidden"
                     />
 
                     {/* Sidebar */}
@@ -56,7 +56,7 @@ export default function MemberSidebar({ isOpen, onClose, members, onSelectMember
                         animate={{ x: 0 }}
                         exit={{ x: '100%' }}
                         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                        className="fixed top-0 right-0 h-full w-[80%] max-w-[320px] bg-[#fdfaf3]/95 backdrop-blur-md shadow-2xl z-[1600] border-l border-[#d4a373]/30 flex flex-col"
+                        className="fixed top-0 right-0 h-full w-[80%] max-w-[320px] sidebar-panel shadow-2xl z-[1600] border-l border-[#d4a373]/30 flex flex-col"
                     >
                         {/* Header */}
                         <div className="p-4 border-b border-[#d4a373]/20 flex items-center justify-between">

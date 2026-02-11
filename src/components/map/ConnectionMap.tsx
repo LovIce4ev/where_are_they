@@ -1,11 +1,11 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, MapPin, Clock, MessageSquare, Edit2, Loader2, LogIn, LogOut, User, Plus, Save, Trash2, Mail, Menu, Bell } from 'lucide-react';
+import { X, MapPin, Clock, MessageSquare, Edit2, Loader2, LogIn, LogOut, User, Plus, Save, Trash2, Mail, Menu } from 'lucide-react';
 import AvatarUpload from './AvatarUpload';
 import { supabase, getProfiles, getMyProfile, updateProfile, deleteProfile, getUnreadCount, type Profile } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -26,7 +26,6 @@ const DefaultIcon = L.icon({
 L.Marker.prototype.options.icon = DefaultIcon;
 
 const CHIANG_MAI: [number, number] = [18.7883, 98.9817];
-const WORLD_BOUNDS: L.LatLngBoundsExpression = [[-90, -180], [90, 180]];
 
 type MapMember = {
     id: string;
@@ -48,6 +47,93 @@ const profileToMember = (profile: Profile): MapMember => ({
     status: profile.status_text || '',
     countdown: profile.return_date || '待定',
     avatar: profile.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=default',
+});
+
+// NOTE: 预创建 homeIcon，避免每次渲染重新生成 SVG + encodeURIComponent
+const HOME_SVG = `
+    <svg viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg">
+        <path d="M10 65 L50 35 L90 65" fill="#e76f51" stroke="#e76f51" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="20" y="65" width="60" height="45" rx="2" fill="#f4a261"/>
+        <path d="M42 110 L42 85 A 8 8 0 0 1 58 85 L58 110 Z" fill="#2a9d8f"/>
+        <circle cx="50" cy="58" r="6" fill="#fff" stroke="#264653" stroke-width="2"/>
+        <path d="M50 15 C40 5 25 15 50 30 C75 15 60 5 50 15 Z" fill="#e63946"/>
+    </svg>`;
+
+const HOME_ICON = L.icon({
+    iconUrl: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(HOME_SVG)}`,
+    iconSize: [60, 72],
+    iconAnchor: [30, 36],
+    className: 'hover:scale-110 transition-transform duration-500'
+});
+
+// NOTE: 预创建成员图标缓存，避免每次渲染都调用 L.divIcon
+const memberIconCache = new Map<string, L.DivIcon>();
+
+/**
+ * 获取成员地图图标，使用缓存避免重复创建
+ * @param avatar 头像 URL
+ * @param isOwner 是否为当前用户的 profile
+ */
+function getMemberIcon(avatar: string, isOwner: boolean): L.DivIcon {
+    const cacheKey = `${avatar}_${isOwner}`;
+    const cached = memberIconCache.get(cacheKey);
+    if (cached) return cached;
+
+    const icon = L.divIcon({
+        className: 'custom-member-icon',
+        html: `<div class="group relative cursor-pointer">
+                 <div class="w-10 h-10 rounded-full border-2 ${isOwner ? 'border-orange-400' : 'border-white'} shadow-lg overflow-hidden bg-white hover:scale-110 transition-transform">
+                   <img src="${avatar}" class="w-full h-full object-cover" />
+                 </div>
+                 <div class="absolute -bottom-1 -right-1 w-3 h-3 ${isOwner ? 'bg-orange-500' : 'bg-green-500'} border-2 border-white rounded-full"></div>
+               </div>`,
+        iconSize: [40, 40],
+        iconAnchor: [20, 20],
+    });
+
+    memberIconCache.set(cacheKey, icon);
+    return icon;
+}
+
+// NOTE: 连线样式对象提取到组件外部，避免每次渲染创建新对象
+const POLYLINE_OPTIONS: L.PolylineOptions = {
+    color: '#ff7b54',
+    weight: 2,
+    opacity: 0.6,
+    dashArray: '5, 10',
+    lineCap: 'round',
+    className: 'connection-line'
+};
+
+/**
+ * 独立 Marker + Polyline 组件，使用 React.memo 避免无关成员变化时重渲染
+ */
+const MemberMarkerItem = memo(function MemberMarkerItem({
+    member,
+    isOwner,
+    onSelect,
+}: {
+    member: MapMember;
+    isOwner: boolean;
+    onSelect: (member: MapMember) => void;
+}) {
+    const icon = getMemberIcon(member.avatar, isOwner);
+
+    return (
+        <>
+            <Marker
+                position={member.latlng}
+                eventHandlers={{
+                    click: () => onSelect(member),
+                }}
+                icon={icon}
+            />
+            <Polyline
+                positions={[member.latlng, CHIANG_MAI]}
+                pathOptions={POLYLINE_OPTIONS}
+            />
+        </>
+    );
 });
 
 export default function ConnectionMap() {
@@ -93,7 +179,6 @@ export default function ConnectionMap() {
         const profile = await getMyProfile();
         setMyProfile(profile);
 
-        // Load unread messages
         const count = await getUnreadCount();
         setUnreadCount(count);
     }, [user]);
@@ -108,7 +193,6 @@ export default function ConnectionMap() {
 
     // Realtime Subscriptions
     useEffect(() => {
-        // 1. Listen for Profile changes (global)
         const profileChannel = supabase
             .channel('public:profiles')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
@@ -116,8 +200,7 @@ export default function ConnectionMap() {
             })
             .subscribe();
 
-        // 2. Listen for Messages (if logged in)
-        let messageChannel: any;
+        let messageChannel: ReturnType<typeof supabase.channel> | undefined;
         if (user) {
             messageChannel = supabase
                 .channel(`public:messages:${user.id}`)
@@ -129,9 +212,7 @@ export default function ConnectionMap() {
                         filter: `receiver_id=eq.${user.id}`
                     },
                     () => {
-                        // New message received!
                         setUnreadCount(prev => prev + 1);
-                        // Optional: Show toast notification
                     }
                 )
                 .subscribe();
@@ -143,18 +224,27 @@ export default function ConnectionMap() {
         };
     }, [user, loadProfiles]);
 
-    const isMyProfile = (member: MapMember) => !!user && member.userId === user.id;
+    const isMyProfile = useCallback((member: MapMember) => !!user && member.userId === user.id, [user]);
+
+    // NOTE: 稳定回调引用，传递给 memo 子组件
+    const handleSelectMember = useCallback((member: MapMember) => {
+        setSelectedMember(member);
+        setIsEditing(false);
+    }, []);
 
     // Actions
     const handleAvatarUpdate = async (newUrl: string) => {
         if (!selectedMember) return;
 
-        // Optimistic update
         const updatedMembers = members.map(m =>
             m.id === selectedMember.id ? { ...m, avatar: newUrl } : m
         );
         setMembers(updatedMembers);
         setSelectedMember({ ...selectedMember, avatar: newUrl });
+
+        // NOTE: 头像更新后清理对应缓存
+        memberIconCache.delete(`${selectedMember.avatar}_true`);
+        memberIconCache.delete(`${selectedMember.avatar}_false`);
 
         await supabase.from('profiles').update({ avatar_url: newUrl }).eq('id', selectedMember.id);
         setIsEditing(false);
@@ -170,7 +260,6 @@ export default function ConnectionMap() {
             });
             if (error) throw error;
 
-            // Local update (Realtime will also trigger, but this is faster)
             const updated = { ...selectedMember, status: editStatus, countdown: editCountdown };
             setMembers(prev => prev.map(m => m.id === selectedMember.id ? updated : m));
             setSelectedMember(updated);
@@ -194,100 +283,53 @@ export default function ConnectionMap() {
         }
     };
 
-    const handleFlyToMember = (member: MapMember) => {
+    const handleFlyToMember = useCallback((member: MapMember) => {
         setMapTarget(member.latlng);
         setTimeout(() => {
             setSelectedMember(member);
-            // setMapTarget(null); // Keep it or reset? Resetting usually safer to allow re-trigger
-        }, 1500); // Wait for flight
-    };
+        }, 1500);
+    }, []);
 
-    // Icons
-    // 最终方案：使用标准 L.icon + Encoded SVG，确保所有环境都能正确显示
-    const homeSvgString = `
-    <svg viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg" class="filter drop-shadow-lg">
-        <style>@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}.heart-anim{animation:float 2s ease-in-out infinite}</style>
-        <path d="M10 65 L50 35 L90 65" fill="#e76f51" stroke="#e76f51" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-        <rect x="20" y="65" width="60" height="45" rx="2" fill="#f4a261"/>
-        <path d="M42 110 L42 85 A 8 8 0 0 1 58 85 L58 110 Z" fill="#2a9d8f"/>
-        <circle cx="50" cy="58" r="6" fill="#fff" stroke="#264653" stroke-width="2"/>
-        <path class="heart-anim" d="M50 15 C40 5 25 15 50 30 C75 15 60 5 50 15 Z" fill="#e63946"/>
-    </svg>`;
-
-    // Node.js 和浏览器都支持 encodeURIComponent
-    const homeIconUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(homeSvgString)}`;
-
-    const homeIcon = L.icon({
-        iconUrl: homeIconUrl,
-        iconSize: [60, 72], // 稍微放大一点
-        iconAnchor: [30, 36], // 中心点
-        className: 'hover:scale-110 transition-transform duration-500' // 保留交互效果
-    });
+    // NOTE: 缓存 mapBounds 对象，避免每次渲染创建新的引用
+    const mapBounds = useMemo<L.LatLngBoundsExpression>(() => [[-60, -180], [85, 180]], []);
 
     return (
         <div className="relative w-full h-screen overflow-hidden">
-            {/* Map */}
-            <div className="absolute inset-0 z-0" style={{ filter: 'sepia(0.4) saturate(0.8) contrast(0.9) brightness(1.05)' }}>
+            {/* Map — 移除 sepia/saturate/contrast filter，减少全屏 GPU 合成开销 */}
+            <div className="absolute inset-0 z-0">
                 <MapContainer
                     center={CHIANG_MAI}
                     zoom={4}
-                    minZoom={3}
-                    maxBounds={[[-60, -180], [85, 180]]} // 限制南极区域，聚焦有人居住区域
-                    maxBoundsViscosity={1.0} // 强力回弹，不允许拖出边界
+                    minZoom={1}
+                    maxBounds={mapBounds}
+                    maxBoundsViscosity={1.0}
                     className="w-full h-full"
                     style={{ background: '#fdfaf3' }}
                 >
                     <TileLayer
                         attribution='&copy; OpenStreetMap contributors'
                         url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png"
-                        noWrap={true} // 禁止地图水平重复
+                        noWrap={true}
                     />
 
                     <MapController target={mapTarget} />
 
-                    <Marker position={CHIANG_MAI} icon={homeIcon}>
+                    <Marker position={CHIANG_MAI} icon={HOME_ICON}>
                         <Popup><div className="font-bold">清迈家中心 🏡</div></Popup>
                     </Marker>
 
                     {members.map(member => (
-                        <React.Fragment key={member.id}>
-                            <Marker
-                                position={member.latlng}
-                                eventHandlers={{
-                                    click: () => {
-                                        setSelectedMember(member);
-                                        setIsEditing(false);
-                                    },
-                                }}
-                                icon={L.divIcon({
-                                    className: 'custom-member-icon',
-                                    html: `<div class="group relative cursor-pointer">
-                                             <div class="w-10 h-10 rounded-full border-2 ${isMyProfile(member) ? 'border-orange-400' : 'border-white'} shadow-lg overflow-hidden bg-white hover:scale-110 transition-transform">
-                                               <img src="${member.avatar}" class="w-full h-full object-cover" />
-                                             </div>
-                                             <div class="absolute -bottom-1 -right-1 w-3 h-3 ${isMyProfile(member) ? 'bg-orange-500' : 'bg-green-500'} border-2 border-white rounded-full"></div>
-                                           </div>`,
-                                    iconSize: [40, 40],
-                                    iconAnchor: [20, 20],
-                                })}
-                            />
-                            <Polyline
-                                positions={[member.latlng, CHIANG_MAI]}
-                                pathOptions={{
-                                    color: '#ff7b54',
-                                    weight: 2,
-                                    opacity: 0.6,
-                                    dashArray: '5, 10',
-                                    lineCap: 'round',
-                                    className: 'connection-line'
-                                }}
-                            />
-                        </React.Fragment>
+                        <MemberMarkerItem
+                            key={member.id}
+                            member={member}
+                            isOwner={!!user && member.userId === user.id}
+                            onSelect={handleSelectMember}
+                        />
                     ))}
                 </MapContainer>
             </div>
 
-            <div className="paper-texture" />
+            {/* NOTE: paper-texture 层已移除，减少 1 个全屏 GPU 合成层 */}
 
             {/* Title */}
             <motion.div
@@ -309,8 +351,8 @@ export default function ConnectionMap() {
             <div className="absolute top-6 right-6 z-10 flex flex-col items-end gap-3">
                 {user ? (
                     <>
-                        {/* User Pill */}
-                        <div className="bg-white/90 backdrop-blur-md px-4 py-2 rounded-full border border-[#d4a373]/30 flex items-center gap-2 shadow-sm">
+                        {/* User Pill — 使用 glass-card class 替代内联 backdrop-blur */}
+                        <div className="glass-card px-4 py-2 rounded-full border border-[#d4a373]/30 flex items-center gap-2 shadow-sm">
                             <User size={16} className="text-[#d4a373]" />
                             <span className="text-sm text-[#4a3e3e] font-medium max-w-[100px] truncate">
                                 {user.user_metadata?.username || user.email?.split('@')[0]}
@@ -327,9 +369,9 @@ export default function ConnectionMap() {
                         <button
                             onClick={() => {
                                 setShowInboxModal(true);
-                                setUnreadCount(0); // Reset count on open
+                                setUnreadCount(0);
                             }}
-                            className="bg-white/90 backdrop-blur-md p-3 rounded-full border border-[#d4a373]/30 hover:bg-white transition-colors relative shadow-sm group"
+                            className="glass-card p-3 rounded-full border border-[#d4a373]/30 hover:bg-white transition-colors relative shadow-sm group"
                             title="收件箱"
                         >
                             <Mail size={20} className="text-[#4a3e3e] group-hover:scale-110 transition-transform" />
@@ -343,7 +385,7 @@ export default function ConnectionMap() {
                         {/* Sidebar Toggle */}
                         <button
                             onClick={() => setShowSidebar(true)}
-                            className="bg-white/90 backdrop-blur-md p-3 rounded-full border border-[#d4a373]/30 hover:bg-white transition-colors shadow-sm md:hidden"
+                            className="glass-card p-3 rounded-full border border-[#d4a373]/30 hover:bg-white transition-colors shadow-sm md:hidden"
                         >
                             <Menu size={20} className="text-[#4a3e3e]" />
                         </button>
@@ -351,7 +393,7 @@ export default function ConnectionMap() {
                 ) : (
                     <button
                         onClick={() => setShowLoginModal(true)}
-                        className="bg-white/90 backdrop-blur-md px-5 py-2.5 rounded-full border border-[#d4a373]/30 hover:bg-white transition-colors flex items-center gap-2 shadow-sm"
+                        className="glass-card px-5 py-2.5 rounded-full border border-[#d4a373]/30 hover:bg-white transition-colors flex items-center gap-2 shadow-sm"
                     >
                         <LogIn size={18} className="text-[#d4a373]" />
                         <span className="text-sm text-[#4a3e3e] font-medium">登录</span>
@@ -363,7 +405,7 @@ export default function ConnectionMap() {
             <div className="hidden md:block absolute top-[120px] right-6 z-10">
                 <button
                     onClick={() => setShowSidebar(true)}
-                    className="bg-white/90 backdrop-blur-md p-3 rounded-full border border-[#d4a373]/30 hover:bg-white transition-colors shadow-sm flex items-center gap-2"
+                    className="glass-card p-3 rounded-full border border-[#d4a373]/30 hover:bg-white transition-colors shadow-sm flex items-center gap-2"
                 >
                     <Menu size={20} className="text-[#4a3e3e]" />
                     <span className="text-sm font-medium text-[#4a3e3e]">成员列表</span>
@@ -514,10 +556,6 @@ export default function ConnectionMap() {
                                                         return;
                                                     }
                                                     setShowMessageModal(true);
-                                                    // Don't close profile modal? Or Overlay?
-                                                    // Let's keep profile modal open or close it? 
-                                                    // Standard: Close profile, open message. 
-                                                    // But context is important. Let's overlay.
                                                 }}
                                                 className="w-full mt-6 py-3 bg-[#4a3e3e] text-[#fdfaf3] rounded-xl font-bold hover:bg-[#5a4e4e] transition-colors flex items-center justify-center gap-2"
                                             >
@@ -532,28 +570,34 @@ export default function ConnectionMap() {
                 )}
             </AnimatePresence>
 
-            {/* Modals */}
-            <LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
+            {/* NOTE: 条件渲染模态框 — 只在需要时挂载，减少 DOM 占用和事件监听 */}
+            {showLoginModal && (
+                <LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
+            )}
 
-            <AddProfileModal
-                isOpen={showAddModal}
-                onClose={() => setShowAddModal(false)}
-                onSuccess={() => {
-                    loadProfiles();
-                    loadMyProfile();
-                }}
-            />
+            {showAddModal && (
+                <AddProfileModal
+                    isOpen={showAddModal}
+                    onClose={() => setShowAddModal(false)}
+                    onSuccess={() => {
+                        loadProfiles();
+                        loadMyProfile();
+                    }}
+                />
+            )}
 
-            {selectedMember && (
+            {showMessageModal && selectedMember && (
                 <MessageModal
                     isOpen={showMessageModal}
                     onClose={() => setShowMessageModal(false)}
-                    receiverId={selectedMember.userId} // Use userId (auth id)
+                    receiverId={selectedMember.userId}
                     receiverName={selectedMember.name}
                 />
             )}
 
-            <InboxModal isOpen={showInboxModal} onClose={() => setShowInboxModal(false)} />
+            {showInboxModal && (
+                <InboxModal isOpen={showInboxModal} onClose={() => setShowInboxModal(false)} />
+            )}
 
             {/* Fab Buttons */}
             {user && !myProfile && (
@@ -568,7 +612,7 @@ export default function ConnectionMap() {
 
             {/* Mobile Footer Stats */}
             <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 md:hidden pointer-events-none">
-                <div className="bg-white/60 backdrop-blur-sm px-4 py-1.5 rounded-full border border-white/50 text-xs text-[#4a3e3e]/80 font-medium">
+                <div className="glass-card px-4 py-1.5 rounded-full border border-white/50 text-xs text-[#4a3e3e]/80 font-medium">
                     {members.length} 人连接中
                 </div>
             </div>
