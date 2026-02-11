@@ -203,9 +203,9 @@ export default function ConnectionMap() {
     };
 
     // Icons
-    // 使用 Data URI 避免文件加载问题，并简化结构确保定位准确
-    const homeSvg = `
-    <svg viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg" class="w-full h-full filter drop-shadow-lg">
+    // 最终方案：使用标准 L.icon + Encoded SVG，确保所有环境都能正确显示
+    const homeSvgString = `
+    <svg viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg" class="filter drop-shadow-lg">
         <style>@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}.heart-anim{animation:float 2s ease-in-out infinite}</style>
         <path d="M10 65 L50 35 L90 65" fill="#e76f51" stroke="#e76f51" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
         <rect x="20" y="65" width="60" height="45" rx="2" fill="#f4a261"/>
@@ -214,13 +214,14 @@ export default function ConnectionMap() {
         <path class="heart-anim" d="M50 15 C40 5 25 15 50 30 C75 15 60 5 50 15 Z" fill="#e63946"/>
     </svg>`;
 
-    const homeIcon = L.divIcon({
-        className: 'custom-home-icon',
-        html: `<div class="relative w-12 h-12 hover:scale-110 transition-transform duration-500">
-                 ${homeSvg}
-               </div>`,
-        iconSize: [50, 50],
-        iconAnchor: [25, 25],
+    // Node.js 和浏览器都支持 encodeURIComponent
+    const homeIconUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(homeSvgString)}`;
+
+    const homeIcon = L.icon({
+        iconUrl: homeIconUrl,
+        iconSize: [60, 72], // 稍微放大一点
+        iconAnchor: [30, 36], // 中心点
+        className: 'hover:scale-110 transition-transform duration-500' // 保留交互效果
     });
 
     return (
