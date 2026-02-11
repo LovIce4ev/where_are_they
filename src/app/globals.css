@@ -85,3 +85,27 @@ body {
     transform: scale(1.05);
   }
 }
+
+/* ============================================ */
+/* 移动端性能优化：禁用连续动画，降低 GPU 占用 */
+/* ============================================ */
+@media (max-width: 768px) {
+  .connection-line {
+    animation: none !important;
+  }
+
+  .custom-home-icon {
+    animation: none !important;
+  }
+}
+
+/* 尊重系统级 "减少动画" 偏好 */
+@media (prefers-reduced-motion: reduce) {
+  .connection-line {
+    animation: none !important;
+  }
+
+  .custom-home-icon {
+    animation: none !important;
+  }
+}
