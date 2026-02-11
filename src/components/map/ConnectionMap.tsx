@@ -296,7 +296,7 @@ export default function ConnectionMap() {
                 className="absolute top-8 left-1/2 -translate-x-1/2 z-10 text-center pointer-events-none w-full px-4"
             >
                 <h1 className="text-2xl md:text-4xl font-serif tracking-[0.2em] text-[#4a3e3e] drop-shadow-sm">
-                    Chiang Mai Connection
+                    CMI活点地图！
                 </h1>
                 <div className="flex items-center justify-center gap-4 mt-2">
                     <div className="h-[1px] w-8 md:w-12 bg-[#d4a373]"></div>
