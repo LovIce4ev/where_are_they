@@ -1,0 +1,33 @@
+<svg viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-5px); }
+    }
+    .heart { animation: float 2s ease-in-out infinite; }
+  </style>
+  <!-- Glow -->
+  <circle cx="50" cy="80" r="35" fill="#f2cc8f" opacity="0.2" />
+  
+  <!-- Chimney Smoke -->
+  <circle cx="78" cy="35" r="3" fill="#e0e0e0" opacity="0.6" />
+  <circle cx="82" cy="28" r="4" fill="#e0e0e0" opacity="0.4" />
+
+  <!-- Chimney -->
+  <rect x="70" y="45" width="12" height="20" fill="#e76f51" />
+
+  <!-- Walls -->
+  <rect x="20" y="65" width="60" height="45" rx="2" fill="#f4a261" />
+  
+  <!-- Roof -->
+  <path d="M10 65 L50 35 L90 65" fill="#e76f51" stroke="#e76f51" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Door -->
+  <path d="M42 110 L42 85 A 8 8 0 0 1 58 85 L58 110 Z" fill="#2a9d8f" />
+  
+  <!-- Window -->
+  <circle cx="50" cy="58" r="6" fill="#fff" stroke="#264653" stroke-width="2" />
+  
+  <!-- Heart -->
+  <path class="heart" d="M50 15 C40 5 25 15 50 30 C75 15 60 5 50 15 Z" fill="#e63946" />
+</svg>
